@@ -1,8 +1,7 @@
 import CredentialsProvider from "next-auth/providers/credentials";
-
-import { compare } from "bcryptjs";
-// import Google from "next-auth/providers/google";
+import type { DefaultSession, NextAuthOptions, Session } from "next-auth"
 import NextAuth from "next-auth";
+import type { JWT } from "next-auth/jwt";
 
 
 // Extend the default session types
@@ -13,7 +12,7 @@ declare module "next-auth" {
     role?: string;
     firstName?: string;
     lastName?: string;
-    email?: string;
+    contact?: string;
     status?: string;
   }
   interface Session {
@@ -22,7 +21,7 @@ declare module "next-auth" {
       role?: string;
       firstName?: string;
       lastName?: string;
-      email?: string;
+      contact?: string;
       status?: string;
     } & DefaultSession["user"];
   }
@@ -39,7 +38,7 @@ class AuthenticationError extends Error {
 // Types for better type safety
 export interface ConvexUser {
   _id: string;
-  email: string;
+  contact: string;
   firstname?: string;
   lastname?: string;
   password?: string;
@@ -47,7 +46,7 @@ export interface ConvexUser {
   image?: string;
   resetToken?: string;
   resetTokenExpiry: number;
-  status?: string; // <-- Add this line
+  status?: string;
 }
 
 // Centralized logging utility
@@ -95,58 +94,47 @@ export async function safeFetch(
   }
 }
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
+export const authOptions: NextAuthOptions = {
   providers: [
-    // Credentials Provider with Enhanced Security
     CredentialsProvider({
       name: "credentials",
       credentials: {
-        email: { label: "Email or Username", type: "text" },
+        contact: { label: "contact or Username", type: "text" },
         password: { label: "Password", type: "password" },
+        countryCode: { label: "Country Code", type: "text" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          logger.error("Authorize", "Missing email/username or password");
-          throw new Error("Email/Username and password are required");
+        console.log("Received credentials:", credentials?.contact, credentials?.password, credentials?.countryCode);
+        
+        if (!credentials?.contact || !credentials?.password || !credentials?.countryCode) {
+          logger.error("Authorize", "Missing contact/username, password, or country code");
+          return null;
         }
 
-        let user: ConvexUser | null = null;
         try {
-          if (String(credentials.email).includes("@")) {
-            user = await safeFetch(
-              `${process.env.CONVEX_SITE_URL}/getUserByEmail?email=${encodeURIComponent(String(credentials.email))}`,
-              {},
-              "User Lookup by Email"
-            );
-          } else {
-            user = await safeFetch(
-              `${process.env.CONVEX_SITE_URL}/getUserByUsername?username=${encodeURIComponent(String(credentials.email))}`,
-              {},
-              "User Lookup by Username"
-            );
+          // Call our Next.js auth API endpoint using relative URL
+          const url = process.env.NEXTAUTH_URL 
+            ? `${process.env.NEXTAUTH_URL}/api/auth/convex-auth`
+            : "/api/auth/convex-auth";
+          
+          const response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contact: String(credentials.contact),
+              password: String(credentials.password),
+              countryCode: String(credentials.countryCode || ""),
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            logger.error("Authorize", `Failed to authenticate: ${response.statusText} - ${errorData.error}`);
+            return null;
           }
 
-          if (!user) {
-            throw new Error("Invalid credentials");
-          }
-
-          const isPasswordValid = await compare(
-            credentials.password as string,
-            user.password || "",
-          );
-
-          if (!isPasswordValid) {
-            throw new Error("Invalid credentials");
-          }
-
-          return {
-            id: user._id,
-            email: user.email,
-            firstName: user.firstname,
-            lastName: user.lastname,
-            role: user.role || "",
-            status: user.status,
-          };
+          const result = await response.json();
+          return result.user || null;
         } catch (error) {
           logger.error("Authorize", error);
           return null;
@@ -155,157 +143,69 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
 
-  // Custom pages for authentication flow
   pages: {
-    signIn: "/login",
+    signIn: "/sign-in",
     error: "/error",
-    signOut: "/logout",
+    signOut: "/",
   },
 
-  // Advanced callbacks for token and session management
   callbacks: {
-    // Enhance JWT with user information
-    async jwt({ token, user }) {
-      try {
-        // Initial sign-in: attach user data
-        if (user) {
-          token.sub = user.id;
-          token.role = user.role; // use the role from user
-          token.email = user.email;
-          token.firstName = user.firstName; // use firstName from user
-          token.lastName = user.lastName; // use lastName from user
-          token.status = user.status || token.status; // <-- this line
-        }
-        // On subsequent requests: refresh token data (but don't fail if fetch fails)
-        else if (token.email && process.env.CONVEX_SITE_URL) {
-          try {
-            const updatedUser = await safeFetch(
-              `${process.env.CONVEX_SITE_URL}/getUserByEmail?email=${token.email}`,
-              {},
-              "Token Refresh",
-            );
-
-            // Update token with fresh user info
-            if (updatedUser) {
-              token.role = updatedUser.role || token.role;
-              token.status = updatedUser.status || token.status; // <-- add this line
-            }
-          } catch (fetchError) {
-            // If fetch fails, keep existing token data and log the error
-            logger.error("JWT Callback - Fetch failed", fetchError);
-            // Don't throw - just continue with existing token data
-          }
-        }
-
-        return token;
-      } catch (error) {
-        logger.error("JWT Callback", error);
-        return token;
+    async jwt({ token, user }: { token: JWT; user?: any }) {
+      if (user) {
+        token.sub = user.id;
+        token.role = user.role;
+        token.contact = user.contact;
+        token.firstName = user.firstName;
+        token.lastName = user.lastName;
+        token.status = user.status;
       }
+      return token;
     },
 
-    // Populate session with token data
-    async session({ session, token }) {
+    async session({ session, token }: { session: Session; token: JWT }) {
       if (token && session.user) {
         session.user.id = token.sub as string;
-        session.user.role = token.role as string;
-        session.user.email = token.email as string;
-        session.user.firstName = token.firstName as string;
-        session.user.lastName = token.lastName as string;
-        session.user.status = token.status as string;
+        session.user.role = (token.role as string) || "";
+        session.user.contact = (token.contact as string) || "";
+        (session.user as any).firstName = token.firstName as string;
+        (session.user as any).lastName = token.lastName as string;
+        (session.user as any).status = token.status as string;
       }
       return session;
     },
 
-    // Enhanced sign-in callback with user creation for OAuth
-    async signIn({ user, account }) {
-      try {
-        if (account?.provider === "google") {
-          const { email, name: firstname, image } = user;
-
-          if (!email) {
-            logger.error("SignIn", "No email provided by Google");
-            return false;
-          }
-
-          let existingUser;
-          try {
-            // Wrap the user lookup in a try-catch to handle 404 specifically
-            existingUser = await safeFetch(
-              `${process.env.CONVEX_SITE_URL}/getUserByEmail?email=${encodeURIComponent(email)}`,
-              {},
-              "Google User Lookup",
-            );
-          } catch (lookupError) {
-            // If the error is a 404 (user not found), set existingUser to null
-            if (
-              lookupError instanceof AuthenticationError &&
-              lookupError.message.includes("404")
-            ) {
-              existingUser = null;
-              logger.info(
-                "SignIn",
-                `No existing user found for ${email}, will create new user`,
-              );
-            } else {
-              // For other errors, rethrow
-              throw lookupError;
-            }
-          }
-
-          // Create user if not exists
-          if (!existingUser) {
-            const newUser = await safeFetch(
-              `${process.env.CONVEX_SITE_URL}/createUser`,
-              {
-                method: "POST",
-                body: JSON.stringify({
-                  email,
-                  firstname,
-                  role: "",
-                  image,
-                }),
-              },
-              "Create Google User",
-            );
-
-            logger.info("SignIn", `Created new user: ${email}`);
-          }
-
-          return true;
-        }
-
-        // For credentials provider, return true if provider is credentials
-        return account?.provider === "credentials";
-      } catch (error) {
-        logger.error("SignIn Callback", error);
-        return false;
+    async signIn({ account }: { account?: any }) {
+      if (account?.provider === "credentials") {
+        return true;
       }
+      return true;
     },
 
-    // Redirect handling with logging
-    async redirect({ url, baseUrl }) {
+    async redirect({ url, baseUrl }: { url: string; baseUrl: string }) {
       try {
-        // Ensure redirect is within the same domain
+        if (url === baseUrl || url.includes("/sign-in") || url.includes("/register")) {
+          return `${baseUrl}/dashboard`;
+        }
         if (url.startsWith("/")) return `${baseUrl}${url}`;
         if (new URL(url).origin === baseUrl) return url;
-        return baseUrl;
+        return `${baseUrl}/dashboard`;
       } catch (error) {
         logger.error("Redirect", error);
-        return baseUrl;
+        return `${baseUrl}/dashboard`;
       }
     },
   },
 
-  // Session and security configurations
   session: {
-    strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    strategy: "jwt" as const,
+    maxAge: 30 * 24 * 60 * 60,
   },
 
-  // Use a strong, environment-based secret
-  secret: process.env.NEXTAUTH_SECRET,
-
-  // Optional: Debug mode for development
+  secret: process.env.NEXTAUTH_SECRET || "your-default-secret-change-in-production",
   debug: process.env.NODE_ENV === "development",
-});
+};
+
+const handler = NextAuth(authOptions);
+
+export const GET = handler;
+export const POST = handler;

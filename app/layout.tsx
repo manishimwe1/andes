@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Montserrat, Playfair_Display } from "next/font/google";
+import ClerkProviderWrapper from "./ClerkProvider";
 import "./globals.css";
-import Navigation from "@/components/Navigation";
+import NextAuthSessionProvider from "./SessionProvider";
+import { ToasterWrapper } from "./ToasterWrapper";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,11 +42,15 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${montserrat.variable} ${playfairDisplay.variable} antialiased`}
       >
-        <main>
-          <Navigation />
+        <NextAuthSessionProvider>
+          <ClerkProviderWrapper>
+            <main>
 
-          {children}
-        </main>
+              {children}
+            </main>
+            <ToasterWrapper />
+          </ClerkProviderWrapper>
+        </NextAuthSessionProvider>
       </body>
     </html>
   );

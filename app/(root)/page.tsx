@@ -1,8 +1,8 @@
-import Navigation from '@/components/Navigation';
 import Image from 'next/image';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 
-export default function Home() {
+export default async function Home() {
   return (
     <div className="font-montserrat text-gray-800 overflow-x-hidden">
       {/* Navigation */}
@@ -27,6 +27,7 @@ export default function Home() {
             src="/SmartScooterTechnology.png"
             alt="Person riding electric scooter"
             fill
+            sizes="100vw"
             className="object-cover opacity-40"
           />
         </div>
@@ -115,6 +116,34 @@ export default function Home() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Call to Action Section */}
+      <section className="py-24 px-[5%] bg-gradient-to-r from-blue-900 to-purple-900">
+        <div className="max-w-4xl mx-auto text-center">
+          <h2 className="font-playfair text-5xl md:text-6xl text-white mb-8 leading-tight">
+            Ready to Join ANDES?
+          </h2>
+          <p className="text-xl text-gray-100 mb-12 max-w-2xl mx-auto">
+            Start your journey with us today and become part of the global sharing economy revolution.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-6 justify-center">
+            <Link
+              href="/sign-in"
+              className="px-10 py-4 bg-white text-blue-900 font-semibold text-lg rounded-full 
+                       transition-all duration-300 shadow-xl hover:shadow-2xl hover:-translate-y-1 hover:bg-cyan-400"
+            >
+              Sign In
+            </Link>
+            <Link
+              href="/register"
+              className="px-10 py-4 bg-transparent text-white font-semibold text-lg rounded-full border-2 border-white
+                       transition-all duration-300 hover:bg-white hover:text-blue-900 hover:-translate-y-1"
+            >
+              Create Account
+            </Link>
           </div>
         </div>
       </section>

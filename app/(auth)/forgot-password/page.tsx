@@ -3,7 +3,7 @@
 import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import React, { useState } from "react";
-import { toast } from "sonner";
+import { toastSuccess, toastError } from "@/lib/clientToast";
 import { Button } from "@/components/ui/button";
 import { generateVerificationCode } from "@/lib/utils";
 import { useRouter } from "next/navigation";
@@ -36,7 +36,7 @@ const ForgotPasswordPage = () => {
       return;
     }
     // Add OTP verification logic here
-    toast.success("OTP verified successfully! (Placeholder)", {
+    toastSuccess("OTP verified successfully! (Placeholder)", {
       richColors: true,
     });
     setSubmitted(true);
@@ -97,7 +97,7 @@ const ForgotPasswordPage = () => {
         });
         const data = await res.json();
         if (data.success) {
-          toast.success("Verification code sent successfully to your phone!", {
+          toastSuccess("Verification code sent successfully to your phone!", {
             richColors: true,
           });
           setPhoneNumber("");
@@ -109,7 +109,7 @@ const ForgotPasswordPage = () => {
           setPhoneNumber("");
           setSubmitted(false);
           setLoading(false);
-          toast.error(data.error || "Failed to send verification code.", {
+          toastError(data.error || "Failed to send verification code.", {
             richColors: true,
           });
         }
@@ -145,12 +145,12 @@ const ForgotPasswordPage = () => {
         });
         const data = await res.json();
         if (data.success) {
-          toast.success(
+          toastSuccess(
             "Password reset link sent successfully to your email!",
             { richColors: true },
           );
         } else {
-          toast.error(data.error || "Failed to send password reset link.", {
+          toastError(data.error || "Failed to send password reset link.", {
             richColors: true,
           });
           setLoading(false);
@@ -160,7 +160,7 @@ const ForgotPasswordPage = () => {
         }
       }
     } catch (err) {
-      toast.error("An unexpected error occurred. Please try again.");
+      toastError("An unexpected error occurred. Please try again.");
     } finally {
       setSubmitted(true);
       setLoading(false);

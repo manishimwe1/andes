@@ -3,7 +3,7 @@
 import { Eye, EyeOff } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
-import { toast } from "sonner";
+import { toastError } from "@/lib/clientToast";
 
 function ResetPasswordContent() {
   const searchParams = useSearchParams();
@@ -65,9 +65,9 @@ function ResetPasswordContent() {
       if (data.success) {
         setSuccess(true);
         setTimeout(() => router.push("/login"), 3000);
-      } else {
+        } else {
         setError(data.error || "Invalid or expired reset link.");
-        toast.error("Token expired");
+        toastError("Token expired");
         router.push("/forgot-password");
         return;
       }

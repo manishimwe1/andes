@@ -5,29 +5,55 @@ export default defineSchema({
   
   // 👤 Users
   user: defineTable({
-    fullname: v.string(),
-    username: v.string(),
-    email: v.string(),
+    countryCode: v.string(),
     password: v.optional(v.string()),
     transactionPassword: v.optional(v.string()),
     invitationCode: v.optional(v.string()),
     contact: v.optional(v.string()),
     telegram: v.optional(v.string()),
     position: v.optional(v.string()),
-    image: v.optional(v.string()),
+    balance: v.optional(v.number()),
     role: v.optional(
       v.union(
-        v.literal("accountant"),
         v.literal("admin"),
-        v.literal("manager"),
-        v.literal("cantine-committee"),
         v.literal("client"),
       ),
     ),
     resetToken: v.optional(v.string()),
     resetTokenExpiry: v.optional(v.number()),
-    status: v.optional(
-      v.union(v.literal("pending"), v.literal("approved"), v.literal("reject")),
+    
+  }).index("by_contact", ["contact"]),
+
+  // 💳 Transactions (Deposits & Withdrawals)
+  transaction: defineTable({
+    userId: v.id("user"),
+    type: v.union(v.literal("deposit"), v.literal("withdrawal")),
+    amount: v.number(),
+    network: v.union(
+      v.literal("polygon"),
+      v.literal("erc20"),
+      v.literal("trc20"),
+      v.literal("bep20")
     ),
-  }).index("by_contact", ["contact"]).index('by_email',['email']),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    walletAddress: v.optional(v.string()),
+    transactionHash: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_userId", ["userId"]).index("by_type", ["type"]),
+
+  // 🔑 Invitation codes
+  invite: defineTable({
+    code: v.string(),
+    issuer: v.optional(v.id("user")),
+    maxUses: v.optional(v.number()),
+    uses: v.optional(v.number()),
+    createdAt: v.number(),
+    expiresAt: v.optional(v.number()),
+    meta: v.optional(v.any()),
+  }).index("by_code", ["code"]),
 });

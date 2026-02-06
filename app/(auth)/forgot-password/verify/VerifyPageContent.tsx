@@ -2,14 +2,22 @@
 
 import { api } from "@/convex/_generated/api";
 import { useAction } from "convex/react";
-import { redirect, useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
-import { toast } from "sonner";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { toastError } from "@/lib/clientToast";
 
 export default function VerifyPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  // console.log(searchParams.get("phoneNumber"));
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    if (!searchParams.get("phoneNumber")) {
+      router.replace("/forgot-password");
+    } else {
+      setIsReady(true);
+    }
+  }, [searchParams, router]);
 
   const [Virify, setVirify] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -21,14 +29,25 @@ export default function VerifyPageContent() {
   const checkUserByPhone = useAction(api.user.checkUserByContact);
   const updateUserInDb = useAction(api.user.updateUserInDb);
 
-  if (!searchParams.get("phoneNumber")) {
-    redirect("/forgot-password");
+  if (!isReady) {
+    return (
+      <section className="flex items-center justify-center min-h-screen bg-gradient-to-br from-indigo-100 via-white to-indigo-200 px-4">
+        <div className="w-full max-w-md bg-white rounded-xl shadow-lg p-8 space-y-6">
+          <div className="animate-pulse">
+            <div className="h-8 bg-gray-200 rounded mb-4"></div>
+            <div className="h-4 bg-gray-200 rounded mb-2"></div>
+            <div className="h-4 bg-gray-200 rounded mb-6"></div>
+            <div className="h-10 bg-gray-200 rounded mb-4"></div>
+            <div className="h-10 bg-gray-200 rounded mb-4"></div>
+            <div className="h-10 bg-gray-200 rounded"></div>
+          </div>
+        </div>
+      </section>
+    );
   }
-
-  const handleSubmit = async (e: React.FormEvent) => {
     
     e.preventDefault();
-    if (!Virify) return toast.error("Please enter the verification code.");
+    if (!Virify) return toastError("Please enter the verification code.");
     setLoading(true);
     setError("");
     const result = await checkUserByPhone({
@@ -45,7 +64,7 @@ export default function VerifyPageContent() {
       return;
     } else {
       router.push(
-        `/reset-password?token=${result.user.resetToken}&phoneNumber=${encodeURIComponent(result.user.contact)}`,
+        `/reset-password?token=${encodeURIComponent(String(result.user.resetToken))}&phoneNumber=${encodeURIComponent(String(result.user.contact))}`,
       );
     }
   };
