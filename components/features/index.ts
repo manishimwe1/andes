@@ -1,4 +1,4 @@
 // Re-export feature components by category
-export { DepositForm } from './transactions/DepositForm';
-export { WithdrawalForm } from './transactions/WithdrawalForm';
-export { TransactionHistory } from './transactions/TransactionHistory';
+export { default as DepositForm } from '../DepositForm';
+export { default as WithdrawalForm } from '../WithdrawalForm';
+export { default as TransactionHistory } from '../TransactionHistory';

@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { action, internalMutation, mutation, query } from "./_generated/server";
+import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 
 // Create an invite (internal mutation)
 export const createInvite = internalMutation({
@@ -26,7 +26,7 @@ export const createInvite = internalMutation({
   },
 });
 
-export const getInviteByCode = query({
+export const getInviteByCode = internalQuery({
   args: { code: v.string() },
   handler: async (ctx, args) => {
     const invite = await ctx.db

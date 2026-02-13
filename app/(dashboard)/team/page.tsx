@@ -3,7 +3,6 @@ import React from "react"
 import { useSession } from "next-auth/react"
 import Link from "next/link"
 import TeamReport from '@/components/TeamReport'
-import TeamPyramid from '@/components/TeamPyramid'
 import InviteCard from '@/components/InviteCard'
 
 const TeamPage = () => {
@@ -23,17 +22,14 @@ const TeamPage = () => {
 
         {/* Content */}
         <div className="flex-1 overflow-auto px-4 py-6 pb-28">
+          {/* Team Report - Main Focus */}
+          <TeamReport />
+
           {/* Invite Section */}
-          <div className="mb-6">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Invite New Members</h3>
+          <div className="mt-8">
+            <h3 className="text-xs font-semibold text-gray-600 mb-3 uppercase tracking-wider">Invite New Members</h3>
             <InviteCard userId={(session as any)?.user?.id ?? undefined} code={(session as any)?.user?.invitationCode ?? '2896064'} />
           </div>
-
-          {/* Team Pyramid */}
-          <TeamPyramid />
-
-          {/* Team Report */}
-          <TeamReport />
         </div>
 
         {/* Bottom Nav */}

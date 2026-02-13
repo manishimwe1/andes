@@ -26,8 +26,9 @@ export default function VerifyPageContent() {
   const [loadingChangePassword, setLoadingChangePassword] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
-  const checkUserByPhone = useAction(api.user.checkUserByContact);
-  const updateUserInDb = useAction(api.user.updateUserInDb);
+  // TODO: Re-enable after Convex API is properly configured
+  // const checkUserByPhone = useAction(api.user.checkUserByContact);
+  // const updateUserInDb = useAction(api.user.updateUserInDb);
 
   if (!isReady) {
     return (
@@ -45,28 +46,13 @@ export default function VerifyPageContent() {
       </section>
     );
   }
-    
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!Virify) return toastError("Please enter the verification code.");
-    setLoading(true);
-    setError("");
-    const result = await checkUserByPhone({
-      contact: searchParams.get("phoneNumber") as string,
-    });
-    if (!result.found || !result.user) {
-      setError(result.error || "No account found with that phone number.");
-      setLoading(false);
-      return;
-    }
-    if (Virify !== result.user.resetToken) {
-      setError("Verification code is incorrect.");
-      setLoading(false);
-      return;
-    } else {
-      router.push(
-        `/reset-password?token=${encodeURIComponent(String(result.user.resetToken))}&phoneNumber=${encodeURIComponent(String(result.user.contact))}`,
-      );
-    }
+    
+    // TODO: Re-enable after Convex API functions are configured
+    toastError("Verification feature is temporarily disabled. Please try again later.");
   };
 
   return (

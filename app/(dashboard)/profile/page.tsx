@@ -8,7 +8,7 @@ const page = () => {
   const { data: session } = useSession()
   const name = session?.user?.name || session?.user?.firstName || "User"
   const email = session?.user?.email || "—"
-  const phone = session?.user?.phone || session?.user?.contact || "—"
+  const phone = (session?.user as any)?.phone || session?.user?.contact || "—"
 
   return (
     <div className="font-montserrat text-gray-800 overflow-hidden bg-gradient-to-br from-green-400 to-cyan-300 min-h-screen flex items-center justify-center">
@@ -32,7 +32,11 @@ const page = () => {
             <div className="text-sm text-gray-600">{phone}</div>
           </div>
 
-          <InviteCard userId={(session as any)?.user?.id ?? undefined} code={(session as any)?.user?.invitationCode ?? '2896064'} />
+          <InviteCard 
+            userId={(session as any)?.user?.id ?? undefined} 
+            code={(session as any)?.user?.invitationCode ?? 'N/A'}
+            expiry={(session as any)?.user?.invitationExpiry ?? undefined}
+          />
 
           <Link href="/team" className="mt-6 block bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-2xl p-4 text-center font-semibold hover:opacity-90 transition">
             👥 View Team Report

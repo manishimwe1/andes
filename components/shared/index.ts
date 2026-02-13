@@ -1,4 +1,4 @@
 // Re-export shared components for cleaner imports
-export { Navigation } from './Navigation';
-export { NavigationWrapper } from './NavigationWrapper';
-export { SupportChat } from './SupportChat';
+export { default as Navigation } from '../Navigation';
+export { default as NavigationWrapper } from '../NavigationWrapper';
+export { default as SupportChat } from '../SupportChat';

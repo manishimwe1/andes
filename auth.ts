@@ -2,6 +2,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import type { DefaultSession, NextAuthOptions, Session } from "next-auth"
 import NextAuth from "next-auth";
 import type { JWT } from "next-auth/jwt";
+import { isAuthorizedAdmin } from "@/lib/adminAuth";
 
 
 // Extend the default session types
@@ -153,11 +154,15 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }: { token: JWT; user?: any }) {
       if (user) {
         token.sub = user.id;
-        token.role = user.role;
+        token.email = user.email;
         token.contact = user.contact;
         token.firstName = user.firstName;
         token.lastName = user.lastName;
         token.status = user.status;
+        token.invitationCode = user.invitationCode;
+        token.invitationExpiry = user.invitationExpiry;
+        // Set role based on authorization - NOT hardcoded
+        token.role = 'user';
       }
       return token;
     },
@@ -165,11 +170,20 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }: { session: Session; token: JWT }) {
       if (token && session.user) {
         session.user.id = token.sub as string;
-        session.user.role = (token.role as string) || "";
+        session.user.email = (token.email as string) || session.user.email;
         session.user.contact = (token.contact as string) || "";
         (session.user as any).firstName = token.firstName as string;
         (session.user as any).lastName = token.lastName as string;
         (session.user as any).status = token.status as string;
+        (session.user as any).invitationCode = token.invitationCode as string;
+        (session.user as any).invitationExpiry = token.invitationExpiry as number;
+        
+        // Check if user is authorized admin
+        if (isAuthorizedAdmin(session)) {
+          session.user.role = 'admin';
+        } else {
+          session.user.role = 'user';
+        }
       }
       return session;
     },

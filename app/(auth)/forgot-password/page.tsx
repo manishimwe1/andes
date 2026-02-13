@@ -23,9 +23,10 @@ const ForgotPasswordPage = () => {
   const [usingPhone, setUsingPhone] = useState(false);
   const [checkOTP, setCheckOTP] = useState(false);
   const [OTP, setOTP] = useState<number>();
-  const checkUserByEmail = useAction(api.user.checkUserByEmail);
-  const updateUserInDb = useAction(api.user.updateUserInDb);
-  const checkUserByPhone = useAction(api.user.checkUserByContact);
+  // TODO: Re-enable after Convex API is properly configured
+  // const checkUserByEmail = useAction(api.user.checkUserByEmail);
+  // const updateUserInDb = useAction(api.user.updateUserInDb);
+  // const checkUserByPhone = useAction(api.user.checkUserByContact);
 
   const router = useRouter();
 
@@ -61,110 +62,11 @@ const ForgotPasswordPage = () => {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
-    setSubmitted(false);
-    setLoading(true);
-
-    if (!validateInput()) {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      if (usingPhone) {
-        const result = await checkUserByPhone({ contact: phoneNumber });
-        if (!result.found || !result.user) {
-          setError(result.error || "No account found with that phone number.");
-          setLoading(false);
-          return;
-        }
-
-        const resetToken = generateVerificationCode(4);
-        const resetTokenExpiry = Date.now() + 1000 * 60 * 60; // 1 hour from now
-
-        await updateUserInDb({
-          userId: result.user._id,
-          resetToken,
-          resetTokenExpiry,
-        });
-
-        const to = `+25${phoneNumber}`;
-        const message = `Your CVC verification code is: ${resetToken}.\n\nDo not share this code with anyone.`;
-
-        const res = await fetch("/api/send-sms", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ to, message }),
-        });
-        const data = await res.json();
-        if (data.success) {
-          toastSuccess("Verification code sent successfully to your phone!", {
-            richColors: true,
-          });
-          setPhoneNumber("");
-          setCheckOTP(true);
-          setSubmitted(true);
-          setLoading(false);
-          router.push(`/forgot-password/verify?phoneNumber=${phoneNumber}`);
-        } else {
-          setPhoneNumber("");
-          setSubmitted(false);
-          setLoading(false);
-          toastError(data.error || "Failed to send verification code.", {
-            richColors: true,
-          });
-        }
-      } else {
-        const result = await checkUserByEmail({ email });
-        if (!result.found || !result.user) {
-          setError(result.error || "No account found with that email.");
-          setLoading(false);
-          return;
-        }
-        const resetToken = generateSecureToken();
-        const resetTokenExpiry = Date.now() + 1000 * 60 * 60; // 1 hour from now
-
-        await updateUserInDb({
-          userId: result.user._id,
-          resetToken,
-          resetTokenExpiry,
-        });
-
-        const resetLink = `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/reset-password?token=${resetToken}&email=${encodeURIComponent(result.user.email)}`;
-
-        const message = `Hello ${result.user.fullname},\n\nWe received a request to reset your password for your account. Click the link below to set a new password:\n\n${resetLink}\n\nIf you did not request a password reset, please ignore this email.\n\nThank you,\nThe Support Team`;
-
-        const res = await fetch("/api/sendEmail", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email,
-            name: result.user.fullname,
-            message,
-            userId: result.user?._id,
-          }),
-        });
-        const data = await res.json();
-        if (data.success) {
-          toastSuccess(
-            "Password reset link sent successfully to your email!",
-            { richColors: true },
-          );
-        } else {
-          toastError(data.error || "Failed to send password reset link.", {
-            richColors: true,
-          });
-          setLoading(false);
-          setSubmitted(false);
-          setEmail("");
-          setPhoneNumber("");
-        }
-      }
-    } catch (err) {
-      toastError("An unexpected error occurred. Please try again.");
-    } finally {
-      setSubmitted(true);
-      setLoading(false);
-    }
+    
+    // TODO: Re-enable after Convex API functions are properly configured
+    toastError("Password reset feature is temporarily disabled. Please try again later.", {
+      richColors: true,
+    });
   };
 
   return (

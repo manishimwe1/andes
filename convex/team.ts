@@ -50,6 +50,19 @@ export const getTeamReport = query({
       return sum;
     };
 
+    const memberDepositMap: Record<string, number> = {};
+    for (const id of [...levelA, ...levelB, ...levelC]) {
+      memberDepositMap[id] = 0;
+    }
+    for (const t of transactions) {
+      if (t.type === "deposit" && t.status === "completed") {
+        const uid = String(t.userId);
+        if (memberDepositMap.hasOwnProperty(uid)) {
+          memberDepositMap[uid] = (memberDepositMap[uid] || 0) + (t.amount || 0);
+        }
+      }
+    }
+
     const aSum = sumDepositsFor(levelA);
     const bSum = sumDepositsFor(levelB);
     const cSum = sumDepositsFor(levelC);
@@ -65,9 +78,51 @@ export const getTeamReport = query({
 
     return {
       levels: {
-        A: { count: aCount, depositSum: aSum, commission: aSum * aRate, rate: aRate },
-        B: { count: bCount, depositSum: bSum, commission: bSum * bRate, rate: bRate },
-        C: { count: cCount, depositSum: cSum, commission: cSum * cRate, rate: cRate },
+        A: {
+          count: aCount,
+          depositSum: aSum,
+          commission: aSum * aRate,
+          rate: aRate,
+          members: levelA.map((id) => {
+            const u = users.find((x) => String(x._id) === String(id));
+            return {
+              _id: u?._id || id,
+              contact: u?.contact || "",
+              invitationCode: u?.invitationCode || "",
+              depositSum: memberDepositMap[id] || 0,
+            };
+          }),
+        },
+        B: {
+          count: bCount,
+          depositSum: bSum,
+          commission: bSum * bRate,
+          rate: bRate,
+          members: levelB.map((id) => {
+            const u = users.find((x) => String(x._id) === String(id));
+            return {
+              _id: u?._id || id,
+              contact: u?.contact || "",
+              invitationCode: u?.invitationCode || "",
+              depositSum: memberDepositMap[id] || 0,
+            };
+          }),
+        },
+        C: {
+          count: cCount,
+          depositSum: cSum,
+          commission: cSum * cRate,
+          rate: cRate,
+          members: levelC.map((id) => {
+            const u = users.find((x) => String(x._id) === String(id));
+            return {
+              _id: u?._id || id,
+              contact: u?.contact || "",
+              invitationCode: u?.invitationCode || "",
+              depositSum: memberDepositMap[id] || 0,
+            };
+          }),
+        },
       },
       totalMembers: aCount + bCount + cCount,
       totalCommission: aSum * aRate + bSum * bRate + cSum * cRate,

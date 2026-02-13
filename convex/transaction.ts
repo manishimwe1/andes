@@ -140,6 +140,18 @@ export const getTransactionHistory = query({
   },
 });
 
+export const getAllTransactions = query({
+  args: {},
+  handler: async (ctx) => {
+    const transactions = await ctx.db
+      .query("transaction")
+      .order("desc")
+      .collect();
+
+    return transactions;
+  },
+});
+
 export const getTransactionById = query({
   args: {
     transactionId: v.id("transaction"),

@@ -70,6 +70,8 @@ export async function POST(request: Request) {
         id: user._id,
         contact: user.contact,
         role: user.role || "",
+        invitationCode: user.invitationCode || "",
+        invitationExpiry: user.invitationExpiry || undefined,
       },
     });
   } catch (error: any) {

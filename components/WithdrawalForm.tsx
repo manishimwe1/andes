@@ -45,13 +45,14 @@ export default function WithdrawalForm() {
 
     try {
       // Validation
-      if (!formData.amount || formData.amount <= 0) {
+      const amount = typeof formData.amount === 'string' ? parseFloat(formData.amount) : formData.amount;
+      if (!amount || amount <= 0) {
         setError('Please enter a valid amount');
         return;
       }
 
       const minAmount = MIN_WITHDRAWAL[formData.network];
-      if (formData.amount < minAmount) {
+      if (amount < minAmount) {
         setError(
           `Minimum withdrawal for ${formData.network.toUpperCase()} is ${minAmount} USDT`
         );
@@ -78,7 +79,7 @@ export default function WithdrawalForm() {
       // Create withdrawal
       const transactionId = await createWithdrawal({
         userId: currentUserId as any,
-        amount: formData.amount,
+        amount: amount,
         network: formData.network,
         walletAddress: formData.walletAddress,
         transactionPassword: formData.transactionPassword,

@@ -41,8 +41,9 @@ export default function SignInPage() {
     (async () => {
       setLoading(true);
       try {
+        const contact = `${countryCode}${phoneNumber}`;
         const res = await signIn("credentials", {
-          contact: phoneNumber,
+          contact,
           password,
           countryCode: countryCode,
           redirect: false,

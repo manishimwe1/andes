@@ -2,6 +2,7 @@ import { hash } from "bcryptjs";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { Doc } from "./_generated/dataModel";
+import type { generateUserAddresses } from "./userNode";
 import {
   action,
   internalMutation,
@@ -56,7 +57,7 @@ export const createUser = internalMutation({
       role: args.role,
     });
     if (!newUser)
-      return new ConvexError("something went wrong in creating user!");
+      throw new ConvexError("something went wrong in creating user!");
     // After creating user, generate a unique invitation code and create invite record
     const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString();
     let code = generateCode();
@@ -72,14 +73,21 @@ export const createUser = internalMutation({
     }
 
     try {
+      // expiry in seconds provided by user request: 2896064 (seconds)
+      const EXPIRY_SECONDS = 2896064;
+      const expiresAt = Date.now() + EXPIRY_SECONDS * 1000;
+
       await ctx.db.insert("invite", {
         code,
         issuer: newUser,
         maxUses: 5,
         uses: 0,
         createdAt: Date.now(),
+        expiresAt,
       });
-      await ctx.db.patch(newUser, { invitationCode: code });
+
+      // patch user with invitation code and expiry so it's available on profile
+      await ctx.db.patch(newUser, { invitationCode: code, invitationExpiry: expiresAt });
     } catch (e) {
       // ignore invite creation failures
     }
@@ -152,7 +160,7 @@ export const registerUser = action({
     password: v.string(),
     confirmPassword: v.string(),
     transactionPassword: v.string(),
-    invitationCode: v.string(),
+    invitationCode: v.optional(v.string()),
     telegram: v.string(),
     contact: v.string(),
   },
@@ -169,12 +177,14 @@ export const registerUser = action({
       return { success: false, error: "User already exists" };
     }
 
-    // Validate invitation code by attempting to claim it
-    const claimResult: any = await ctx.runMutation(internal.invite.claimInvite, {
-      code: args.invitationCode,
-    });
-    if (!claimResult || !claimResult.success) {
-      return { success: false, error: claimResult?.error || 'Invalid invitation code' };
+    // If an invitation code was provided, validate it by attempting to claim it
+    if (args.invitationCode) {
+      const claimResult: any = await ctx.runMutation(internal.invite.claimInvite, {
+        code: args.invitationCode,
+      });
+      if (!claimResult || !claimResult.success) {
+        return { success: false, error: claimResult?.error || 'Invalid invitation code' };
+      }
     }
 
     
@@ -194,11 +204,36 @@ export const registerUser = action({
     if (!newUser) {
       throw new Error("Failed to create user");
     }
+    // If this registration used an invitation code, try to associate the new user
+    // with the inviter (referredBy) so they appear in the inviter's team.
+    if (args.invitationCode) {
+      try {
+        const invite = await ctx.runQuery(internal.invite.getInviteByCode, { code: args.invitationCode });
+        if (invite && invite.issuer) {
+          await ctx.runMutation(internal.user.setReferredBy, {
+            userId: newUser,
+            referrerId: invite.issuer,
+          });
+        }
+      } catch (e) {
+        // ignore failures to avoid blocking registration
+      }
+    }
+    
+    // Assign deposit addresses to the new user
+    try {
+      await ctx.runAction((internal as any).userNode.generateUserAddresses, {
+        userId: newUser.toString(),
+      });
+    } catch (e) {
+      console.error("Failed to assign addresses:", e);
+      // Don't fail registration if address assignment fails
+    }
     
     // console.log("User created successfully");
     return { success: true, error: null };
   },
-}) as any;
+});
 
 
 
@@ -217,3 +252,125 @@ export const deleteUserInDb = mutation({
     return { success: true };
   },
 });
+
+// Internal mutation to set referredBy
+export const setReferredBy = internalMutation({
+  args: {
+    userId: v.id("user"),
+    referrerId: v.id("user"),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.userId, { referredBy: args.referrerId });
+    return true;
+  },
+});
+
+// Internal mutation to save a single address
+export const saveSingleAddress = internalMutation({
+  args: {
+    userId: v.id("user"),
+    network: v.string(),
+    address: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    
+    if (!user) {
+      throw new ConvexError("User not found!");
+    }
+
+    const addresses = user.depositAddresses || {};
+    const updatedAddresses = {
+      ...addresses,
+      [args.network]: args.address,
+    };
+
+    await ctx.db.patch(args.userId, {
+      depositAddresses: updatedAddresses,
+    });
+
+    return args.address;
+  },
+});
+
+// Internal mutation to save all addresses
+export const saveAllAddresses = internalMutation({
+  args: {
+    userId: v.id("user"),
+    addresses: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    
+    if (!user) {
+      throw new ConvexError("User not found!");
+    }
+
+    await ctx.db.patch(args.userId, {
+      depositAddresses: args.addresses,
+    });
+
+    return args.addresses;
+  },
+});
+
+
+
+
+export const getOrAssignUserAddress = action({
+  args: {
+    userId: v.id("user"),
+    network: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Generate new address via action
+    const allAddresses = await ctx.runAction((internal as any).userNode.generateUserAddresses, {
+      userId: args.userId,
+    });
+    const newAddress = allAddresses[args.network];
+    
+    // Store it in database
+    await ctx.runMutation(internal.user.saveSingleAddress, {
+      userId: args.userId,
+      network: args.network,
+      address: newAddress,
+    });
+
+    return newAddress;
+  },
+}) as any;
+
+export const getUserAddresses = query({
+  args: {
+    userId: v.id("user"),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    
+    if (!user) {
+      throw new ConvexError("User not found!");
+    }
+
+    return user.depositAddresses || {};
+  },
+});
+
+export const assignAllUserAddresses = action({
+  args: {
+    userId: v.id("user"),
+  },
+  handler: async (ctx, args) => {
+    // Generate all addresses via action
+    const addresses = await ctx.runAction((internal as any).userNode.generateUserAddresses, {
+      userId: args.userId,
+    });
+
+    // Save all addresses
+    await ctx.runMutation(internal.user.saveAllAddresses, {
+      userId: args.userId,
+      addresses,
+    });
+
+    return addresses;
+  },
+}) as any;

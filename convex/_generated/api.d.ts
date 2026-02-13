@@ -9,9 +9,11 @@
  */
 
 import type * as invite from "../invite.js";
+import type * as settings from "../settings.js";
 import type * as team from "../team.js";
 import type * as transaction from "../transaction.js";
 import type * as user from "../user.js";
+import type * as userNode from "../userNode.js";
 
 import type {
   ApiFromModules,
@@ -21,9 +23,11 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   invite: typeof invite;
+  settings: typeof settings;
   team: typeof team;
   transaction: typeof transaction;
   user: typeof user;
+  userNode: typeof userNode;
 }>;
 
 /**

@@ -37,6 +37,7 @@ export default function RegisterPage() {
   const [confirmValid, setConfirmValid] = useState<boolean | null>(null);
   const [txPasswordValid, setTxPasswordValid] = useState<boolean | null>(null);
 
+  // Use Convex action to register users (requires Convex dev/service running)
   const registerUser = useAction(api.user.registerUser);
   const user = useQuery(api.user.getUserByContact, { contact: phoneNumber });
 
@@ -68,41 +69,48 @@ export default function RegisterPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!phoneNumber || !password) return setError("Please provide phone number and password");
-    if (password !== confirm) return setError("Passwords do not match");
+
+    // Basic client-side validation
+    if (!validatePhone(phoneNumber)) {
+      setError("Please enter a valid phone number.");
+      return;
+    }
+    if (!validatePassword(password)) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
+    if (!validateConfirm(confirm)) {
+      setError("Passwords do not match.");
+      return;
+    }
+    if (!validateTxPassword(txPassword)) {
+      setError("Transaction password must be at least 6 characters.");
+      return;
+    }
 
     setLoading(true);
     try {
-      // Register user in Convex database
-      const registerRes = await registerUser({
-        contact:phoneNumber,
+      const contact = `${countryCode}${phoneNumber}`;
+      const result: any = await registerUser({
+        countryCode,
         password,
         confirmPassword: confirm,
-        transactionPassword: txPassword || pin,
-        invitationCode: invitationCode,
+        transactionPassword: txPassword,
+        invitationCode,
         telegram,
-        countryCode: countryCode,
+        contact,
       });
 
-      if (!registerRes || (registerRes as any).success === false) {
-        throw new Error((registerRes as any)?.error || 'Failed to register user');
+      if (!result || !result.success) {
+        setError(result?.error || "Registration failed. Please try again.");
+        setLoading(false);
+        return;
       }
 
-      // Auto sign in after successful registration
-      const signInRes = await signIn("credentials", {
-        email: email || phoneNumber,
-        password,
-        redirect: false,
-      });
-
-      if (signInRes?.ok) {
-        router.push("/dashboard");
-      } else {
-        // If auto sign-in fails, redirect to sign-in page
-        router.push("/sign-in");
-      }
+      // On success, navigate to sign-in page
+      router.push('/sign-in');
     } catch (err: any) {
-      setError(err?.message || String(err));
+      setError(err?.message || "Unexpected error during registration");
     } finally {
       setLoading(false);
     }

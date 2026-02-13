@@ -43,7 +43,7 @@ export default function JoiningProcessPage() {
     setDepositModal({ open: false });
   };
 
-  function DeviceCard({ item, userBalance, onRequestDeposit }: { item: { grade: string; equipment: number; daily: number }, userBalance?: number, onRequestDeposit: (required: number, network: string) => void }) {
+  function DeviceCard({ item, userBalance, onRequestDeposit, isSignedIn }: { item: { grade: string; equipment: number; daily: number }, userBalance?: number, onRequestDeposit: (required: number, network: string) => void, isSignedIn: boolean }) {
     const storageKey = `andes_device_${item.grade}`;
     const [count, setCount] = useState<number>(1);
     const [deposit, setDeposit] = useState<number>(0);
@@ -69,6 +69,27 @@ export default function JoiningProcessPage() {
 
     const required = item.equipment * count;
     const [network, setNetwork] = useState<string>('polygon');
+
+    const handleStartTask = () => {
+      // Check if user is signed in
+      if (!isSignedIn) {
+        router.push('/sign-in');
+        return;
+      }
+
+      // If deposit input was used and meets required, activate
+      if (deposit >= required) return setActive(true);
+
+      // Otherwise check user balance and request parent to show deposit modal
+      const balance = userBalance ?? 0;
+      if (balance >= required) {
+        setActive(true);
+        return;
+      }
+
+      // Ask parent to open deposit modal with required amount and chosen network
+      onRequestDeposit(required, network);
+    };
 
     return (
       <div className="bg-gradient-to-br from-green-200 to-cyan-200 rounded-lg p-6 shadow-md">
@@ -131,20 +152,7 @@ export default function JoiningProcessPage() {
               <div>
                 {!active ? (
                   <button
-                    onClick={() => {
-                      // If deposit input was used and meets required, activate
-                      if (deposit >= required) return setActive(true);
-
-                      // Otherwise check user balance and request parent to show deposit modal
-                      const balance = userBalance ?? 0;
-                      if (balance >= required) {
-                        setActive(true);
-                        return;
-                      }
-
-                      // Ask parent to open deposit modal with required amount and chosen network
-                      onRequestDeposit(required, network);
-                    }}
+                    onClick={handleStartTask}
                     className={`px-4 py-2 rounded font-semibold ${deposit >= required ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-700'}`}
                   >
                     Start
@@ -250,6 +258,7 @@ export default function JoiningProcessPage() {
                 item={item}
                 userBalance={user?.balance}
                 onRequestDeposit={onRequestDeposit}
+                isSignedIn={!!session?.user}
               />
             ))}
           </div>

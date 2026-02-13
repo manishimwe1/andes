@@ -10,6 +10,8 @@ export default defineSchema({
     transactionPassword: v.optional(v.string()),
     invitationCode: v.optional(v.string()),
     contact: v.optional(v.string()),
+    email: v.optional(v.string()),
+    fullname: v.optional(v.string()),
     telegram: v.optional(v.string()),
     position: v.optional(v.string()),
     balance: v.optional(v.number()),
@@ -21,8 +23,16 @@ export default defineSchema({
     ),
     resetToken: v.optional(v.string()),
     resetTokenExpiry: v.optional(v.number()),
+    depositAddresses: v.optional(v.object({
+      trc20: v.optional(v.string()),
+      bep20: v.optional(v.string()),
+      erc20: v.optional(v.string()),
+      polygon: v.optional(v.string()),
+    })),
+    invitationExpiry: v.optional(v.number()),
+    referredBy: v.optional(v.id("user")),
     
-  }).index("by_contact", ["contact"]),
+  }).index("by_contact", ["contact"]).index("by_email", ["email"]),
 
   // 💳 Transactions (Deposits & Withdrawals)
   transaction: defineTable({
@@ -56,4 +66,11 @@ export default defineSchema({
     expiresAt: v.optional(v.number()),
     meta: v.optional(v.any()),
   }).index("by_code", ["code"]),
+
+  // ⚙️ Settings (single document for platform settings)
+  settings: defineTable({
+    key: v.string(),
+    value: v.any(),
+    updatedAt: v.optional(v.number()),
+  }).index("by_key", ["key"]),
 });
