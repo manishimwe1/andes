@@ -40,8 +40,16 @@ export function useDepositAddress({ userId }: UseDepositAddressProps) {
       setError(null);
 
       try {
+        // Route to the correct API based on network
+        const apiUrl =
+          network === "bep20"
+            ? "/api/bsc/generate-address"
+            : network === "polygon"
+            ? "/api/polygon/generate-address"
+            : "/api/tron/generate-address";
+
         // Call API route to generate address
-        const response = await fetch("/api/tron/generate-address", {
+        const response = await fetch(apiUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

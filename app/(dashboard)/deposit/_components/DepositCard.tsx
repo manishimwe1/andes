@@ -15,7 +15,9 @@ export function DepositCard({
 }: any) {
   // Determine activation status
   const isTrone = depositInfo.id === 'trc20';
+  const isPolygon = depositInfo.id === 'polygon';
   const trxBalance = walletBalance?.trx ?? 0;
+  const polygonBalance = walletBalance?.polygon ?? 0;
   const usdtBalance = walletBalance?.usdt ?? 0;
   const totalUsdt = walletBalance?.totalUsdt ?? 0; // Use the combined total if available
   
@@ -70,9 +72,16 @@ export function DepositCard({
            </div>
            {walletBalance && (
              <div className="flex gap-2 text-xs font-mono">
-                <div className="px-3 py-1.5 bg-white rounded-lg border border-emerald-200 text-emerald-700 shadow-sm">
-                   TRX: {trxBalance}
-                </div>
+                {isTrone && (
+                  <div className="px-3 py-1.5 bg-white rounded-lg border border-emerald-200 text-emerald-700 shadow-sm">
+                     TRX: {trxBalance}
+                  </div>
+                )}
+                {isPolygon && (
+                  <div className="px-3 py-1.5 bg-white rounded-lg border border-emerald-200 text-emerald-700 shadow-sm">
+                     MATIC: {polygonBalance}
+                  </div>
+                )}
              </div>
            )}
         </div>

@@ -116,7 +116,14 @@ export default function DepositContent() {
   }, [selectedNetwork]);
 
   // Balance state 
-  const [walletBalance, setWalletBalance] = useState<{ trx: number; usdt: number } | null>(null);
+  const [walletBalance, setWalletBalance] = useState<{ 
+    trx?: number; 
+    bnb?: number; 
+    polygon?: number;
+    usdt: number; 
+    usdc?: number;
+    totalUsdt?: number;
+  } | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
 
   // Format address for display
@@ -145,11 +152,18 @@ export default function DepositContent() {
     let mounted = true;
     
     const checkBalance = async () => {
-      if (!currentAddress || selectedNetwork !== 'trc20') return;
+      // Only check balance for supported networks (TRC20 and BEP20)
+      if (!currentAddress || (selectedNetwork !== 'trc20' && selectedNetwork !== 'bep20')) return;
       
       try {
         setLoadingBalance(true);
-        const response = await fetch("/api/tron/check-deposits");
+        const apiEndpoint = selectedNetwork === 'bep20' 
+          ? "/api/bsc/check-deposits" 
+          : selectedNetwork === 'trc20'
+          ? "/api/tron/check-deposits"
+          : "/api/polygon/check-deposits";
+          
+        const response = await fetch(apiEndpoint);
         const data = await response.json();
         
         if (mounted && data.balance) {
@@ -225,7 +239,13 @@ export default function DepositContent() {
         const toastId = toast.loading("Scanning blockchain...");
         setLoadingBalance(true);
         
-        const response = await fetch("/api/tron/check-deposits");
+        const apiEndpoint = selectedNetwork === 'bep20' 
+          ? "/api/bsc/check-deposits" 
+          : selectedNetwork === 'polygon'
+          ? "/api/polygon/check-deposits"
+          : "/api/tron/check-deposits";
+
+        const response = await fetch(apiEndpoint);
         const data = await response.json();
         
         // Update balance state
@@ -318,11 +338,11 @@ export default function DepositContent() {
                   </div>
                 </div>
 
-                {/* Quick Actions (Future) */}
+                {/* Quick Actions */}
                 <div className="mt-8 grid grid-cols-2 gap-3">
-                   <button onClick={() => toast("Withdrawals coming soon", { icon: "🚧" })} className="px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100 transition-all text-sm font-medium text-slate-600">
+                   <Link href="/withdraw" className="px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100 transition-all text-sm font-medium text-slate-600 flex items-center justify-center">
                       Withdraw
-                   </button>
+                   </Link>
                    <button className="px-4 py-3 rounded-xl bg-cyan-50 border border-cyan-100 text-cyan-700 cursor-default text-sm font-medium">
                       Deposit
                    </button>

@@ -4,25 +4,25 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
-import { getAccountBalance, getNewTransactions } from "@/lib/tron/utils";
+import { getAccountBalance, getNewTransactions } from "@/lib/polygon/utils";
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
-async function getTrxPriceInUsdt() {
+async function getMaticPriceInUsdt() {
   try {
     const response = await axios.get(
-      "https://api.coingecko.com/api/v3/simple/price?ids=tron&vs_currencies=usd"
+      "https://api.coingecko.com/api/v3/simple/price?ids=matic-network&vs_currencies=usd"
     );
-    return response.data.tron.usd;
+    return response.data["matic-network"].usd;
   } catch (error) {
-    console.error("Failed to fetch TRX price:", error);
-    return 0.15;
+    console.error("Failed to fetch MATIC price:", error);
+    return 1.0; // fallback price
   }
 }
 
 export async function GET(req: Request) {
   try {
-    console.log("🔐 Checking authentication...");
+    console.log("🔐 [Polygon] Checking authentication...");
 
     const session = await getServerSession(authOptions);
 
@@ -38,7 +38,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const depositAddress = user.depositAddresses?.trc20;
+    const depositAddress = user.depositAddresses?.polygon;
 
     if (!depositAddress) {
       return NextResponse.json(
@@ -50,20 +50,23 @@ export async function GET(req: Request) {
       );
     }
 
-    console.log("📍 Checking deposits for address:", depositAddress);
+    console.log("📍 [Polygon] Checking deposits for address:", depositAddress);
 
     const checkStartedAt = Date.now();
 
-    const trxPrice = await getTrxPriceInUsdt();
-    console.log(`💱 Current TRX Price: $${trxPrice}`);
+    const maticPrice = await getMaticPriceInUsdt();
+    console.log(`💱 [Polygon] Current MATIC Price: $${maticPrice}`);
 
     const balance = await getAccountBalance(depositAddress);
-    console.log(`💰 Wallet Balance — TRX: ${balance.trx}, USDT: ${balance.usdt}`);
-
-    const trxAsUsdt = balance.trx * trxPrice;
-    const totalWalletUsdt = balance.usdt + trxAsUsdt;
     console.log(
-      `💰 Combined Balance: $${totalWalletUsdt.toFixed(4)} (TRX: ${balance.trx} → $${trxAsUsdt.toFixed(4)}, USDT: ${balance.usdt})`
+      `💰 [Polygon] Wallet Balance — MATIC: ${balance.polygon}, USDT: ${balance.usdt}, USDC: ${balance.usdc}`
+    );
+
+    const maticAsUsdt = balance.polygon * maticPrice;
+    const totalWalletUsdt = balance.usdt + balance.usdc + maticAsUsdt;
+    console.log(
+      `💰 [Polygon] Combined Balance: $${totalWalletUsdt.toFixed(4)} ` +
+        `(MATIC: ${balance.polygon} → $${maticAsUsdt.toFixed(4)}, USDT: ${balance.usdt}, USDC: ${balance.usdc})`
     );
 
     const lastCheck = user.lastDepositCheck || 0;
@@ -71,37 +74,36 @@ export async function GET(req: Request) {
 
     const newTransactions = await getNewTransactions(depositAddress, lastCheck);
     console.log(
-      `📊 Found ${newTransactions.length} new transactions since ${new Date(lastCheck).toISOString()}`
+      `📊 [Polygon] Found ${newTransactions.length} new transactions since ${new Date(lastCheck).toISOString()}`
     );
 
     const deposits = [];
-    let newCreditAmount = 0;
 
     for (const tx of newTransactions) {
-      if (tx.to !== depositAddress) continue;
+      if (tx.to.toLowerCase() !== depositAddress.toLowerCase()) continue;
 
       if (!tx.confirmed) {
-        console.log(`⏳ Skipping unconfirmed tx: ${tx.txHash}`);
+        console.log(`⏳ [Polygon] Skipping unconfirmed tx: ${tx.txHash}`);
         continue;
       }
 
+      // Convert to USDT value
       const txAmountUsdt =
-        tx.type === "TRX"
-          ? Number(tx.amount) * trxPrice
-          : Number(tx.amount);
+        tx.type === "POLYGON"
+          ? Number(tx.amount) * maticPrice
+          : Number(tx.amount); // USDT and USDC are already in USD
 
       try {
-        // 1. Record the deposit entry (idempotent via hash check inside recordDeposit)
+        // 1. Record the deposit entry
         const depositId = await convex.mutation(api.deposit.recordDeposit, {
           userId: user._id,
-          network: "trc20",
+          network: "polygon",
           amount: txAmountUsdt,
           walletAddress: depositAddress,
           transactionHash: tx.txHash,
         });
 
-        // 2. Mark the individual tx as completed (this does NOT touch user.balance —
-        //    balance is updated in bulk below via updateUserBalance)
+        // 2. Mark the individual tx as completed
         await convex.mutation(api.deposit.updateDepositStatus, {
           transactionHash: tx.txHash,
           status: "completed",
@@ -116,42 +118,31 @@ export async function GET(req: Request) {
           timestamp: tx.timestamp,
         });
 
-        newCreditAmount += txAmountUsdt;
-
-        console.log(
-          `✅ Recorded tx entry: $${txAmountUsdt.toFixed(4)} (${tx.amount} ${tx.type}) — hash: ${tx.txHash}`
-        );
-      } catch (error) {
-        console.error(`❌ Error recording deposit for tx ${tx.txHash}:`, error);
-      }
+      console.log(
+        `✅ [Polygon] Recorded tx entry: $${txAmountUsdt.toFixed(4)} (${tx.amount} ${tx.type}) — hash: ${tx.txHash}`
+      );
     }
 
-    // ── Individual deposits are credited in the loop above ───────────────────
-    // Bulk balance sync is removed to prevent overwriting withdrawal deductions.
-    console.log(
-      `ℹ️ Scan complete (wallet: $${totalWalletUsdt.toFixed(4)}, DB balance: $${alreadyCredited.toFixed(4)})`
-    );
-
-    // ── Always advance lastCheck to when THIS poll started ────────────────────
+    // Always advance lastCheck to when THIS poll started
     await convex.mutation(api.deposit.updateLastDepositCheck, {
       userId: user._id,
       timestamp: checkStartedAt,
     });
-    console.log(`🕐 lastCheck advanced to ${new Date(checkStartedAt).toISOString()}`);
 
     return NextResponse.json({
       address: depositAddress,
       balance: {
-        ...balance,
-        trxAsUsdt,
+        polygon: balance.polygon,
+        usdt: balance.usdt,
+        usdc: balance.usdc,
+        maticAsUsdt,
         totalUsdt: totalWalletUsdt,
       },
       newDeposits: deposits,
       totalNewDeposits: deposits.length,
-      credited: newCreditAmount > 0.001 ? newCreditAmount : 0,
     });
   } catch (error: any) {
-    console.error("❌ Error checking deposits:", error);
+    console.error("❌ [Polygon] Error checking deposits:", error);
 
     return NextResponse.json(
       {
