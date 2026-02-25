@@ -4,25 +4,25 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/auth";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
-import { getAccountBalance, getNewTransactions } from "@/lib/tron/utils";
+import { getAccountBalance, getNewTransactions } from "@/lib/bsc/utils";
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
-async function getTrxPriceInUsdt() {
+async function getBnbPriceInUsdt() {
   try {
     const response = await axios.get(
-      "https://api.coingecko.com/api/v3/simple/price?ids=tron&vs_currencies=usd"
+      "https://api.coingecko.com/api/v3/simple/price?ids=binancecoin&vs_currencies=usd"
     );
-    return response.data.tron.usd;
+    return response.data.binancecoin.usd;
   } catch (error) {
-    console.error("Failed to fetch TRX price:", error);
-    return 0.15;
+    console.error("Failed to fetch BNB price:", error);
+    return 600; // fallback price
   }
 }
 
 export async function GET(req: Request) {
   try {
-    console.log("🔐 Checking authentication...");
+    console.log("🔐 [BSC] Checking authentication...");
 
     const session = await getServerSession(authOptions);
 
@@ -38,7 +38,13 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const depositAddress = user.depositAddresses?.trc20;
+    const depositAddress = user.depositAddresses?.bep20;
+    console.log("depositAddress", depositAddress);
+
+// ADD THIS:
+console.log("RAW address from DB:", JSON.stringify(depositAddress));
+console.log("Address length:", depositAddress?.length);
+console.log("Expected length: 42");
 
     if (!depositAddress) {
       return NextResponse.json(
@@ -50,20 +56,23 @@ export async function GET(req: Request) {
       );
     }
 
-    console.log("📍 Checking deposits for address:", depositAddress);
+    console.log("📍 [BSC] Checking deposits for address:", depositAddress);
 
     const checkStartedAt = Date.now();
 
-    const trxPrice = await getTrxPriceInUsdt();
-    console.log(`💱 Current TRX Price: $${trxPrice}`);
+    const bnbPrice = await getBnbPriceInUsdt();
+    console.log(`💱 [BSC] Current BNB Price: $${bnbPrice}`);
 
     const balance = await getAccountBalance(depositAddress);
-    console.log(`💰 Wallet Balance — TRX: ${balance.trx}, USDT: ${balance.usdt}`);
-
-    const trxAsUsdt = balance.trx * trxPrice;
-    const totalWalletUsdt = balance.usdt + trxAsUsdt;
     console.log(
-      `💰 Combined Balance: $${totalWalletUsdt.toFixed(4)} (TRX: ${balance.trx} → $${trxAsUsdt.toFixed(4)}, USDT: ${balance.usdt})`
+      `💰 [BSC] Wallet Balance — BNB: ${balance.bnb}, USDT: ${balance.usdt}, USDC: ${balance.usdc}`
+    );
+
+    const bnbAsUsdt = balance.bnb * bnbPrice;
+    const totalWalletUsdt = balance.usdt + balance.usdc + bnbAsUsdt;
+    console.log(
+      `💰 [BSC] Combined Balance: $${totalWalletUsdt.toFixed(4)} ` +
+        `(BNB: ${balance.bnb} → $${bnbAsUsdt.toFixed(4)}, USDT: ${balance.usdt}, USDC: ${balance.usdc})`
     );
 
     const lastCheck = user.lastDepositCheck || 0;
@@ -71,37 +80,36 @@ export async function GET(req: Request) {
 
     const newTransactions = await getNewTransactions(depositAddress, lastCheck);
     console.log(
-      `📊 Found ${newTransactions.length} new transactions since ${new Date(lastCheck).toISOString()}`
+      `📊 [BSC] Found ${newTransactions.length} new transactions since ${new Date(lastCheck).toISOString()}`
     );
 
     const deposits = [];
-    let newCreditAmount = 0;
 
     for (const tx of newTransactions) {
-      if (tx.to !== depositAddress) continue;
+      if (tx.to.toLowerCase() !== depositAddress.toLowerCase()) continue;
 
       if (!tx.confirmed) {
-        console.log(`⏳ Skipping unconfirmed tx: ${tx.txHash}`);
+        console.log(`⏳ [BSC] Skipping unconfirmed tx: ${tx.txHash}`);
         continue;
       }
 
+      // Convert to USDT value
       const txAmountUsdt =
-        tx.type === "TRX"
-          ? Number(tx.amount) * trxPrice
-          : Number(tx.amount);
+        tx.type === "BNB"
+          ? Number(tx.amount) * bnbPrice
+          : Number(tx.amount); // USDT and USDC are already in USD
 
       try {
         // 1. Record the deposit entry (idempotent via hash check inside recordDeposit)
         const depositId = await convex.mutation(api.deposit.recordDeposit, {
           userId: user._id,
-          network: "trc20",
+          network: "bep20",
           amount: txAmountUsdt,
           walletAddress: depositAddress,
           transactionHash: tx.txHash,
         });
 
-        // 2. Mark the individual tx as completed (this does NOT touch user.balance —
-        //    balance is updated in bulk below via updateUserBalance)
+        // 2. Mark the individual tx as completed
         await convex.mutation(api.deposit.updateDepositStatus, {
           transactionHash: tx.txHash,
           status: "completed",
@@ -116,42 +124,40 @@ export async function GET(req: Request) {
           timestamp: tx.timestamp,
         });
 
-        newCreditAmount += txAmountUsdt;
-
         console.log(
-          `✅ Recorded tx entry: $${txAmountUsdt.toFixed(4)} (${tx.amount} ${tx.type}) — hash: ${tx.txHash}`
+          `✅ [BSC] Recorded tx entry: $${txAmountUsdt.toFixed(4)} (${tx.amount} ${tx.type}) — hash: ${tx.txHash}`
         );
       } catch (error) {
-        console.error(`❌ Error recording deposit for tx ${tx.txHash}:`, error);
+        console.error(
+          `❌ [BSC] Error recording deposit for tx ${tx.txHash}:`,
+          error
+        );
       }
     }
 
-    // ── Individual deposits are credited in the loop above ───────────────────
-    // Bulk balance sync is removed to prevent overwriting withdrawal deductions.
-    console.log(
-      `ℹ️ Scan complete (wallet: $${totalWalletUsdt.toFixed(4)}, DB balance: $${alreadyCredited.toFixed(4)})`
-    );
-
-    // ── Always advance lastCheck to when THIS poll started ────────────────────
+    // Always advance lastCheck to when THIS poll started
     await convex.mutation(api.deposit.updateLastDepositCheck, {
       userId: user._id,
       timestamp: checkStartedAt,
     });
-    console.log(`🕐 lastCheck advanced to ${new Date(checkStartedAt).toISOString()}`);
+    console.log(
+      `🕐 [BSC] lastCheck advanced to ${new Date(checkStartedAt).toISOString()}`
+    );
 
     return NextResponse.json({
       address: depositAddress,
       balance: {
-        ...balance,
-        trxAsUsdt,
+        bnb: balance.bnb,
+        usdt: balance.usdt,
+        usdc: balance.usdc,
+        bnbAsUsdt,
         totalUsdt: totalWalletUsdt,
       },
       newDeposits: deposits,
       totalNewDeposits: deposits.length,
-      credited: newCreditAmount > 0.001 ? newCreditAmount : 0,
     });
   } catch (error: any) {
-    console.error("❌ Error checking deposits:", error);
+    console.error("❌ [BSC] Error checking deposits:", error);
 
     return NextResponse.json(
       {

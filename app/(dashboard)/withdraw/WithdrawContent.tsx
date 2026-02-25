@@ -14,6 +14,7 @@ export default function WithdrawContent() {
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
   const [network, setNetwork] = useState("trc20");
+  const [tokenType, setTokenType] = useState("USDT");
 
   const user = useQuery(
     api.user.getUserByContact,
@@ -35,21 +36,22 @@ export default function WithdrawContent() {
 
     if (!user) return;
     
-    // Basic validation
+    // Basic balance validation
     if (parseFloat(amount) > (user.balance || 0)) {
         toast.error("Insufficient balance");
-        return;
-    }
-
-    if (network !== "trc20") {
-        toast.error("Only TRC20 withdrawals are currently supported");
         return;
     }
 
     setLoading(true);
 
     try {
-      const response = await fetch("/api/tron/withdraw", {
+      const apiEndpoint = network === "trc20" 
+        ? "/api/tron/withdraw" 
+        : network === "bep20" 
+        ? "/api/bsc/withdraw" 
+        : "/api/polygon/withdraw";
+
+      const response = await fetch(apiEndpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -58,6 +60,7 @@ export default function WithdrawContent() {
           amount: parseFloat(amount),
           address,
           network,
+          tokenType: network === "trc20" ? "USDT" : tokenType,
         }),
       });
 
@@ -70,13 +73,19 @@ export default function WithdrawContent() {
       toast.success("Withdrawal successful! Transaction ID: " + data.txId);
       setAmount("");
       setAddress("");
-      // No need to manually refresh, Convex subscriptions handle it
     } catch (error: any) {
       console.error("Withdrawal error:", error);
       toast.error(error.message || "Failed to process withdrawal");
     } finally {
       setLoading(false);
     }
+  };
+
+  const getExplorerLink = (txHash: string, txNetwork: string) => {
+    if (txNetwork === "trc20") return `https://nile.tronscan.org/#/transaction/${txHash}`;
+    if (txNetwork === "bep20") return `https://testnet.bscscan.com/tx/${txHash}`;
+    if (txNetwork === "polygon") return `https://amoy.polygonscan.com/tx/${txHash}`;
+    return "#";
   };
 
   if (!user) {
@@ -107,7 +116,7 @@ export default function WithdrawContent() {
               </h2>
             </div>
             <div className="p-3 bg-cyan-50 rounded-xl">
-                 <span className="text-cyan-700 font-semibold">TRC20 Network</span>
+                 <span className="text-cyan-700 font-semibold">{network.toUpperCase()} Network</span>
             </div>
           </div>
         </div>
@@ -126,14 +135,35 @@ export default function WithdrawContent() {
                             <label className="block text-sm font-medium text-gray-700 mb-1">Network</label>
                             <select 
                                 value={network}
-                                onChange={(e) => setNetwork(e.target.value)}
+                                onChange={(e) => {
+                                    setNetwork(e.target.value);
+                                    if (e.target.value === "trc20") setTokenType("USDT");
+                                }}
                                 className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 bg-gray-50 text-gray-800 font-medium"
-                                disabled
                             >
-                                <option value="trc20">Tron (TRC20) - USDT</option>
+                                <option value="trc20">Tron (TRC20)</option>
+                                <option value="bep20">BNB Chain (BEP20)</option>
+                                <option value="polygon">Polygon (ERC20)</option>
                             </select>
-                            <p className="text-xs text-gray-500 mt-1">Currently only TRC20 withdrawals are available.</p>
                         </div>
+
+                        {/* Token Type Selection (if not Tron) */}
+                        {network !== "trc20" && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Asset</label>
+                                <select 
+                                    value={tokenType}
+                                    onChange={(e) => setTokenType(e.target.value)}
+                                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 bg-gray-50 text-gray-800 font-medium"
+                                >
+                                    <option value="USDT">USDT</option>
+                                    <option value="USDC">USDC</option>
+                                    <option value={network === "bep20" ? "BNB" : "POLYGON"}>
+                                        {network === "bep20" ? "Native BNB" : "Native MATIC"}
+                                    </option>
+                                </select>
+                            </div>
+                        )}
 
                         {/* Address Input */}
                         <div>
@@ -142,7 +172,7 @@ export default function WithdrawContent() {
                                 type="text"
                                 value={address}
                                 onChange={(e) => setAddress(e.target.value)}
-                                placeholder="Enter TRON (TRC20) address"
+                                placeholder={`Enter ${network.toUpperCase()} address`}
                                 className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
                                 required
                             />
@@ -150,7 +180,7 @@ export default function WithdrawContent() {
 
                         {/* Amount Input */}
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Amount (USDT)</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Amount (USDT Value)</label>
                             <div className="relative">
                                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">$</span>
                                 <input
@@ -236,14 +266,15 @@ export default function WithdrawContent() {
                                     </div>
                                     <div className="flex justify-between items-center">
                                         <div>
-                                            <p className="font-bold text-gray-800">-${tx.amount.toFixed(2)}</p>
+                                            <p className="font-bold text-gray-800">-${(tx.amount || 0).toFixed(2)}</p>
                                             <p className="text-xs text-gray-500 font-mono truncate max-w-[150px]">
                                                 {tx.walletAddress}
                                             </p>
+                                            <p className="text-[10px] text-slate-400 uppercase">{tx.network}</p>
                                         </div>
                                         {tx.transactionHash && (
                                             <a 
-                                                href={`https://nile.tronscan.org/#/transaction/${tx.transactionHash}`}
+                                                href={getExplorerLink(tx.transactionHash, tx.network)}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="text-cyan-600 hover:text-cyan-700 text-xs flex items-center gap-1"
@@ -262,7 +293,7 @@ export default function WithdrawContent() {
                 </div>
             </div>
         </div>
-      </div>
+        </div>
     </main>
   );
 }
