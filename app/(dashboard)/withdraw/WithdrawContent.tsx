@@ -14,14 +14,8 @@ export default function WithdrawContent() {
   const [address, setAddress] = useState("");
   const [txPassword, setTxPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [serverError, setServerError] = useState<string | null>(null);
-  const [showForgottenModal, setShowForgottenModal] = useState(false);
-  const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
-  const network = "trc20";
-
-  const MIN_WITHDRAWAL = {
-    trc20: 5,
-  };
+  const [network, setNetwork] = useState("trc20");
+  const [tokenType, setTokenType] = useState("USDT");
 
   const user = useQuery(
     api.user.getUserByContact,
@@ -117,57 +111,26 @@ export default function WithdrawContent() {
     }
     console.log('✓ Fields validation passed');
 
-    // Validation 2: Check password (skip if 24hr bypass is available)
-    if (!canBypassPassword && !isPasswordLocked && (!txPassword || txPassword.trim().length === 0)) {
-      console.log('VALIDATION FAILED: Missing password');
-      toast.error("Please enter your transaction password");
-      return;
+    if (!user) return;
+    
+    // Basic balance validation
+    if (parseFloat(amount) > (user.balance || 0)) {
+        toast.error("Insufficient balance");
+        return;
     }
     console.log('✓ Password validation passed (or 24hr bypass available)');
 
-    // Validation 3: Check user exists
-    if (!user){
-      console.log('VALIDATION FAILED: No user object');
-      toast.error("User not found or session expired");
-      return;
-    }
-    console.log('✓ User exists', { userId: user._id, depositAmount: user.depositAmount, earnings: user.earnings });
-
-    // Calculate withdrawable amount: only `earnings` are withdrawable (deposits are locked)
-    const withdrawableAmount = Math.max(0, user.earnings || 0);
-    console.log('Withdrawable amount check:', { requested: parseFloat(amount), available: withdrawableAmount });
-
-    if (parseFloat(amount) > withdrawableAmount) {
-      console.log('VALIDATION FAILED: Insufficient balance');
-      toast.error(
-        `Insufficient withdrawable balance. Available: ${withdrawableAmount.toFixed(2)} USDT`,{
-            richColor: true,
-        }
-      );
-      return;
-    }
-    console.log('✓ Balance validation passed');
-
-    // Check minimum amount for selected network
-    const minAmount = MIN_WITHDRAWAL[network as keyof typeof MIN_WITHDRAWAL];
-    console.log('Minimum amount check:', { requested: parseFloat(amount), minimum: minAmount });
-    if (parseFloat(amount) < minAmount) {
-      console.log('VALIDATION FAILED: Below minimum');
-      toast.error(
-        `Minimum withdrawal for ${network.toUpperCase()} is ${minAmount} USDT`,
-      );
-      return;
-    }
-    console.log('✓ Minimum amount validation passed');
-
-    setServerError(null);
     setLoading(true);
     console.log('Starting withdrawal request...');
 
     try {
-      // Only TRC20 (Tron) withdrawals supported
-      console.log('Sending POST request to /api/tron/withdraw');
-      const response = await fetch("/api/tron/withdraw", {
+      const apiEndpoint = network === "trc20" 
+        ? "/api/tron/withdraw" 
+        : network === "bep20" 
+        ? "/api/bsc/withdraw" 
+        : "/api/polygon/withdraw";
+
+      const response = await fetch(apiEndpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -176,7 +139,7 @@ export default function WithdrawContent() {
           amount: parseFloat(amount),
           address,
           network,
-          transactionPassword: txPassword,
+          tokenType: network === "trc20" ? "USDT" : tokenType,
         }),
       });
 
@@ -248,10 +211,6 @@ export default function WithdrawContent() {
 
       setAmount("");
       setAddress("");
-      setTxPassword("");
-      setServerError(null);
-      console.log('✓ Withdrawal completed and form reset');
-      // No need to manually refresh, Convex subscriptions handle it
     } catch (error: any) {
       console.error("❌ Withdrawal error caught:", error);
       const msg = error?.message || "Failed to process withdrawal";
@@ -260,6 +219,13 @@ export default function WithdrawContent() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const getExplorerLink = (txHash: string, txNetwork: string) => {
+    if (txNetwork === "trc20") return `https://nile.tronscan.org/#/transaction/${txHash}`;
+    if (txNetwork === "bep20") return `https://testnet.bscscan.com/tx/${txHash}`;
+    if (txNetwork === "polygon") return `https://amoy.polygonscan.com/tx/${txHash}`;
+    return "#";
   };
 
   if (!user) {
@@ -309,9 +275,7 @@ export default function WithdrawContent() {
 
             {/* Transaction Password Input moved to form below */}
             <div className="p-3 bg-cyan-50 rounded-xl">
-              <span className="text-cyan-700 font-semibold capitalize">
-                TRC20 Network
-              </span>
+                 <span className="text-cyan-700 font-semibold">{network.toUpperCase()} Network</span>
             </div>
           </div>
         </div>
@@ -340,40 +304,84 @@ export default function WithdrawContent() {
                     required
                   />
                 </div>
+                <div className="p-6 space-y-6">
+                    <form onSubmit={handleWithdraw} className="space-y-4">
+                        
+                        {/* Network Selection */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Network</label>
+                            <select 
+                                value={network}
+                                onChange={(e) => {
+                                    setNetwork(e.target.value);
+                                    if (e.target.value === "trc20") setTokenType("USDT");
+                                }}
+                                className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 bg-gray-50 text-gray-800 font-medium"
+                            >
+                                <option value="trc20">Tron (TRC20)</option>
+                                <option value="bep20">BNB Chain (BEP20)</option>
+                                <option value="polygon">Polygon (ERC20)</option>
+                            </select>
+                        </div>
 
-                {/* Amount Input */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Amount (USDT)
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">
-                      $
-                    </span>
-                    <input
-                      type="number"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      placeholder="0.00"
-                      min={MIN_WITHDRAWAL.trc20}
-                      step="0.01"
-                      className="w-full pl-8 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
-                      required
-                    />
-                  </div>
-                  <div className="flex justify-between text-xs mt-1 text-gray-500">
-                    <span>Min: ${MIN_WITHDRAWAL.trc20}.00</span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setAmount(String(Math.max(0, user.earnings || 0)))
-                      }
-                      className="text-cyan-600 hover:text-cyan-700 font-medium"
-                    >
-                      Max
-                    </button>
-                  </div>
-                </div>
+                        {/* Token Type Selection (if not Tron) */}
+                        {network !== "trc20" && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Asset</label>
+                                <select 
+                                    value={tokenType}
+                                    onChange={(e) => setTokenType(e.target.value)}
+                                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 bg-gray-50 text-gray-800 font-medium"
+                                >
+                                    <option value="USDT">USDT</option>
+                                    <option value="USDC">USDC</option>
+                                    <option value={network === "bep20" ? "BNB" : "POLYGON"}>
+                                        {network === "bep20" ? "Native BNB" : "Native MATIC"}
+                                    </option>
+                                </select>
+                            </div>
+                        )}
+
+                        {/* Address Input */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Destination Address</label>
+                            <input
+                                type="text"
+                                value={address}
+                                onChange={(e) => setAddress(e.target.value)}
+                                placeholder={`Enter ${network.toUpperCase()} address`}
+                                className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
+                                required
+                            />
+                        </div>
+
+                        {/* Amount Input */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Amount (USDT Value)</label>
+                            <div className="relative">
+                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">$</span>
+                                <input
+                                    type="number"
+                                    value={amount}
+                                    onChange={(e) => setAmount(e.target.value)}
+                                    placeholder="0.00"
+                                    min="1"
+                                    step="0.01"
+                                    className="w-full pl-8 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
+                                    required
+                                />
+                            </div>
+                            <div className="flex justify-between text-xs mt-1 text-gray-500">
+                                <span>Min: $10.00</span>
+                                <button 
+                                    type="button" 
+                                    onClick={() => setAmount((user.balance || 0).toString())}
+                                    className="text-cyan-600 hover:text-cyan-700 font-medium"
+                                >
+                                    Max
+                                </button>
+                            </div>
+                        </div>
 
                 {/* Transaction Password Input (moved here) */}
                 <div>
@@ -498,59 +506,58 @@ export default function WithdrawContent() {
                 <div className="p-6 text-center text-gray-500">
                   Loading history...
                 </div>
-              ) : withdrawals.length === 0 ? (
-                <div className="p-8 text-center flex flex-col items-center text-gray-500">
-                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
-                    <svg
-                      className="w-6 h-6 text-gray-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                  </div>
-                  <p>No withdrawal history yet</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-100">
-                  {withdrawals.map((tx) => (
-                    <div
-                      key={tx._id}
-                      className="p-4 hover:bg-gray-50 transition-colors"
-                    >
-                      <div className="flex justify-between items-start mb-1">
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs font-semibold
-                                            ${
-                                              tx.status === "completed"
-                                                ? "bg-green-100 text-green-700"
-                                                : tx.status === "pending"
-                                                  ? "bg-yellow-100 text-yellow-700"
-                                                  : "bg-red-100 text-red-700"
-                                            }`}
-                        >
-                          {tx.status.toUpperCase()}
-                        </span>
-                        <span className="text-xs text-gray-500">
-                          {formatDistanceToNow(tx.createdAt, {
-                            addSuffix: true,
-                          })}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <p className="font-bold text-gray-800">
-                            -${tx.amount.toFixed(2)}
-                          </p>
-                          <p className="text-xs text-gray-500 font-mono truncate max-w-[150px]">
-                            {tx.walletAddress}
-                          </p>
+                <div className="overflow-y-auto flex-1 p-0">
+                    {!withdrawals ? (
+                         <div className="p-6 text-center text-gray-500">Loading history...</div>
+                    ) : withdrawals.length === 0 ? (
+                        <div className="p-8 text-center flex flex-col items-center text-gray-500">
+                            <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                                <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            </div>
+                            <p>No withdrawal history yet</p>
+                        </div>
+                    ) : (
+                        <div className="divide-y divide-gray-100">
+                            {withdrawals.map((tx) => (
+                                <div key={tx._id} className="p-4 hover:bg-gray-50 transition-colors">
+                                    <div className="flex justify-between items-start mb-1">
+                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold
+                                            ${tx.status === 'completed' ? 'bg-green-100 text-green-700' : 
+                                              tx.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                                              'bg-red-100 text-red-700'
+                                            }`}>
+                                            {tx.status.toUpperCase()}
+                                        </span>
+                                        <span className="text-xs text-gray-500">
+                                            {formatDistanceToNow(tx.createdAt, { addSuffix: true })}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="font-bold text-gray-800">-${(tx.amount || 0).toFixed(2)}</p>
+                                            <p className="text-xs text-gray-500 font-mono truncate max-w-[150px]">
+                                                {tx.walletAddress}
+                                            </p>
+                                            <p className="text-[10px] text-slate-400 uppercase">{tx.network}</p>
+                                        </div>
+                                        {tx.transactionHash && (
+                                            <a 
+                                                href={getExplorerLink(tx.transactionHash, tx.network)}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-cyan-600 hover:text-cyan-700 text-xs flex items-center gap-1"
+                                            >
+                                                <span>View</span>
+                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                                </svg>
+                                            </a>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                         {tx.transactionHash && (
                           <a
@@ -583,49 +590,7 @@ export default function WithdrawContent() {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Forgotten Password Confirmation Modal */}
-      {showForgottenModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
-            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-amber-100 mx-auto">
-              <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4v2m0 4v2" />
-              </svg>
-            </div>
-            <div className="text-center">
-              <h3 className="text-lg font-bold text-gray-800">Mark Password as Forgotten?</h3>
-              <p className="text-gray-600 text-sm mt-2">
-                You will be able to withdraw after <span className="font-bold">24 hours</span> without entering your transaction password.
-              </p>
-              <p className="text-gray-500 text-xs mt-3">
-                To access your funds sooner, reset your password via email.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <button
-                onClick={handleMarkForgotten}
-                className="w-full py-2 px-4 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg transition-colors"
-              >
-                Yes, mark as forgotten
-              </button>
-              <button
-                onClick={() => setShowForgottenModal(false)}
-                className="w-full py-2 px-4 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <Link
-                href="/forgot-transaction-password"
-                className="block w-full text-center py-2 px-4 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 font-semibold rounded-lg transition-colors text-sm"
-              >
-                Reset password via email
-              </Link>
-            </div>
-          </div>
         </div>
-      )}
     </main>
   );
 }

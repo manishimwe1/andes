@@ -158,8 +158,8 @@ export async function GET(req: Request) {
     console.log(`💰 Balance:    TRX ${balance.trx} ($${trxAsUsdt.toFixed(4)}) | USDT ${balance.usdt}`);
     console.log(`📊 New txs:    ${newTransactions.length}`);
 
-    const deposits: any[] = [];
-    let totalNewDepositAmount = 0;
+    const deposits = [];
+    let newCreditAmount = 0;
 
     for (const tx of newTransactions) {
       if ((tx?.to ?? "").toLowerCase() !== depositAddress.toLowerCase()) continue;
@@ -216,54 +216,22 @@ export async function GET(req: Request) {
           timestamp:      tx?.timestamp,
           sweptToHotWallet,
         });
-        totalNewDepositAmount += recordedAmount;
+
+        newCreditAmount += txAmountUsdt;
+
+        console.log(
+          `✅ Recorded tx entry: $${txAmountUsdt.toFixed(4)} (${tx.amount} ${tx.type}) — hash: ${tx.txHash}`
+        );
+      } catch (error) {
+        console.error(`❌ Error recording deposit for tx ${tx.txHash}:`, error);
       }
     }
 
-    // Fallback sweep — USDT is on-chain but no new txs detected
-    if (deposits.length === 0 && balance.usdt >= MIN_USDT_TO_SWEEP && canSweep && hotWalletAddress && depositPrivateKey) {
-      console.log(`\n🔍 [FALLBACK] ${balance.usdt} USDT sitting on address — attempting sweep`);
-
-      const sweepResult = await fundAndSweep(
-        depositAddress,
-        hotWalletAddress,
-        depositPrivateKey,  // ✅ from Convex
-        balance.trx,
-        balance.usdt
-      );
-
-      if (sweepResult) {
-        const depositId = await recordAndConfirmDeposit({
-          userId: user._id,
-          depositAddress,
-          txHash:           sweepResult.txId,
-          amount:           sweepResult.amount,
-          sweptToHotWallet: true,
-        });
-
-        if (depositId) {
-          deposits.push({
-            id:              depositId,
-            txHash:          sweepResult.txId,
-            amount:          sweepResult.amount,
-            sweptToHotWallet: true,
-            source:          "fallback-sweep",
-          });
-          totalNewDepositAmount += sweepResult.amount;
-        }
-      }
-    }
-
-    if (totalNewDepositAmount > 0.001) {
-      const newTotal = alreadyCredited + totalNewDepositAmount;
-      await convex.mutation(api.user.updateUserBalance, {
-        userId:        user._id,
-        depositAmount: newTotal,
-      });
-      console.log(`\n💳 Credited $${totalNewDepositAmount.toFixed(4)} — new total: $${newTotal.toFixed(4)}`);
-    } else {
-      console.log(`\nℹ️ No new deposits`);
-    }
+    // ── Individual deposits are credited in the loop above ───────────────────
+    // Bulk balance sync is removed to prevent overwriting withdrawal deductions.
+    console.log(
+      `ℹ️ Scan complete (wallet: $${totalWalletUsdt.toFixed(4)}, DB balance: $${alreadyCredited.toFixed(4)})`
+    );
 
     await convex.mutation(api.deposit.updateLastDepositCheck, {
       userId:    user._id,

@@ -30,10 +30,22 @@ export function useDepositAddress({ userId }: UseDepositAddressProps) {
       setError(null);
 
       try {
-        // GET /api/deposit/address handles everything:
-        // - returns existing address if already generated
-        // - generates new address + saves address AND private key to Convex
-        const response = await fetch("/api/tron/deposit/address");
+        // Route to the correct API based on network
+        const apiUrl =
+          network === "bep20"
+            ? "/api/bsc/generate-address"
+            : network === "polygon"
+            ? "/api/polygon/generate-address"
+            : "/api/tron/generate-address";
+
+        // Call API route to generate address
+        const response = await fetch(apiUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ network }),
+        });
 
         if (!response.ok) {
           const err = await response.json().catch(() => ({}));
